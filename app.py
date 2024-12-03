@@ -14,33 +14,58 @@ def clean_webfocus_code(webfocus_code):
     cleaned_code = "\n".join([line for line in code_without_comments.splitlines() if line.strip()])
     return cleaned_code
 
-# Function to translate WebFOCUS to SQL
+# Function to translate WebFOCUS to SQL, including joins
 def translate_webfocus_to_sql(webfocus_code):
     """
-    Translates basic WebFOCUS code into SQL Server syntax.
+    Translates basic WebFOCUS code into SQL Server syntax, including joins.
     """
-    # Example mapping logic
     sql_lines = []
+    join_condition = None
+    table_name = None
+    select_columns = []
+    group_by_column = None
+
     for line in webfocus_code.splitlines():
-        if "TABLE FILE" in line.upper():
+        line_upper = line.upper()
+        
+        # Detect table declaration
+        if "TABLE FILE" in line_upper:
             table_name = line.split()[-1]
-            sql_lines.append(f"SELECT")
-        elif "SUM" in line.upper():
+        
+        # Detect SUM for aggregation
+        elif "SUM" in line_upper:
             columns = line.replace("SUM", "").strip()
-            sql_lines.append(f"    SUM({columns})")
-        elif "BY" in line.upper():
+            select_columns.append(f"SUM({columns})")
+        
+        # Detect BY for GROUP BY clause
+        elif "BY" in line_upper:
             group_by_column = line.split()[-1]
-            sql_lines.append(f"FROM {table_name}")
-            sql_lines.append(f"GROUP BY {group_by_column};")
-        elif "END" in line.upper():
-            continue
+            select_columns.append(group_by_column)
+        
+        # Detect JOIN statements
+        elif "JOIN" in line_upper:
+            join_parts = re.split(r"\s+ON\s+", line, flags=re.IGNORECASE)
+            if len(join_parts) == 2:
+                join_table = join_parts[0].split()[-1]
+                join_condition = join_parts[1]
+                sql_lines.append(f"JOIN {join_table} ON {join_condition}")
+        
+        # End statement handling
+        elif "END" in line_upper:
+            # Finalize the SQL query
+            sql_lines.insert(0, f"SELECT {', '.join(select_columns)}")
+            sql_lines.insert(1, f"FROM {table_name}")
+            if group_by_column:
+                sql_lines.append(f"GROUP BY {group_by_column};")
+            break
+
         else:
             sql_lines.append(f"-- Unhandled line: {line}")
-    
+
     return "\n".join(sql_lines)
 
 # Streamlit app setup
-st.title("WebFOCUS to SQL Server Translator")
+st.title("WebFOCUS to SQL Server Translator with Joins")
 st.markdown("Paste your WebFOCUS code below to translate it into SQL Server language.")
 
 # Text input area for WebFOCUS code
