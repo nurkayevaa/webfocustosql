@@ -14,10 +14,23 @@ def clean_webfocus_code(webfocus_code):
     cleaned_code = "\n".join([line for line in code_without_comments.splitlines() if line.strip()])
     return cleaned_code
 
+# Function to handle IIF statement translation
+def translate_iif_statements(line):
+    """
+    Translates WebFOCUS IIF-style logic to SQL CASE statements.
+    """
+    iif_pattern = re.compile(r"IIF\s*\((.*?),\s*(.*?),\s*(.*?)\)", re.IGNORECASE)
+    
+    def replace_iif(match):
+        condition, true_value, false_value = match.groups()
+        return f"CASE WHEN {condition.strip()} THEN {true_value.strip()} ELSE {false_value.strip()} END"
+    
+    return iif_pattern.sub(replace_iif, line)
+
 # Function to translate WebFOCUS to SQL, including joins
 def translate_webfocus_to_sql(webfocus_code):
     """
-    Translates basic WebFOCUS code into SQL Server syntax, including joins.
+    Translates basic WebFOCUS code into SQL Server syntax, including joins and IIF statements.
     """
     sql_lines = []
     join_condition = None
@@ -27,6 +40,10 @@ def translate_webfocus_to_sql(webfocus_code):
 
     for line in webfocus_code.splitlines():
         line_upper = line.upper()
+        
+        # Handle IIF statements
+        if "IIF" in line_upper:
+            line = translate_iif_statements(line)
         
         # Detect table declaration
         if "TABLE FILE" in line_upper:
@@ -65,7 +82,7 @@ def translate_webfocus_to_sql(webfocus_code):
     return "\n".join(sql_lines)
 
 # Streamlit app setup
-st.title("WebFOCUS to SQL Server Translator with Joins")
+st.title("WebFOCUS to SQL Server Translator with Joins and IIF Handling")
 st.markdown("Paste your WebFOCUS code below to translate it into SQL Server language.")
 
 # Text input area for WebFOCUS code
