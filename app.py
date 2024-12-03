@@ -14,75 +14,54 @@ def clean_webfocus_code(webfocus_code):
     cleaned_code = "\n".join([line for line in code_without_comments.splitlines() if line.strip()])
     return cleaned_code
 
-# Function to handle IIF statement translation
-def translate_iif_statements(line):
-    """
-    Translates WebFOCUS IIF-style logic to SQL CASE statements.
-    """
-    iif_pattern = re.compile(r"IIF\s*\((.*?),\s*(.*?),\s*(.*?)\)", re.IGNORECASE)
-    
-    def replace_iif(match):
-        condition, true_value, false_value = match.groups()
-        return f"CASE WHEN {condition.strip()} THEN {true_value.strip()} ELSE {false_value.strip()} END"
-    
-    return iif_pattern.sub(replace_iif, line)
-
-# Function to translate WebFOCUS to SQL, including joins
+# Function to translate WebFOCUS to SQL with enhanced support for WHERE, IF, and JOIN
 def translate_webfocus_to_sql(webfocus_code):
     """
-    Translates basic WebFOCUS code into SQL Server syntax, including joins and IIF statements.
+    Translates WebFOCUS code into SQL Server syntax.
     """
-    sql_lines = []
-    join_condition = None
-    table_name = None
     select_columns = []
-    group_by_column = None
+    table_name = None
+    where_conditions = []
+    join_conditions = None
 
     for line in webfocus_code.splitlines():
         line_upper = line.upper()
-        
-        # Handle IIF statements
-        if "IIF" in line_upper:
-            line = translate_iif_statements(line)
         
         # Detect table declaration
         if "TABLE FILE" in line_upper:
             table_name = line.split()[-1]
         
-        # Detect SUM for aggregation
-        elif "SUM" in line_upper:
-            columns = line.replace("SUM", "").strip()
-            select_columns.append(f"SUM({columns})")
+        # Detect WHERE or IF conditions
+        elif line_upper.startswith("WHERE") or line_upper.startswith("IF"):
+            condition = line.replace("WHERE", "").replace("IF", "").strip()
+            where_conditions.append(condition)
         
-        # Detect BY for GROUP BY clause
-        elif "BY" in line_upper:
-            group_by_column = line.split()[-1]
-            select_columns.append(group_by_column)
+        # Detect PRINT for SELECT columns
+        elif line_upper.startswith("PRINT"):
+            columns = line.replace("PRINT", "").strip()
+            select_columns.extend(columns.split())
         
-        # Detect JOIN statements
-        elif "JOIN" in line_upper:
-            join_parts = re.split(r"\s+ON\s+", line, flags=re.IGNORECASE)
-            if len(join_parts) == 2:
-                join_table = join_parts[0].split()[-1]
-                join_condition = join_parts[1]
-                sql_lines.append(f"JOIN {join_table} ON {join_condition}")
+        # Detect ON TABLE for additional clauses (like JOIN or OUTPUT FORMAT)
+        elif line_upper.startswith("ON TABLE"):
+            if "PCHOLD" in line_upper:
+                join_conditions = "DATEOFREC"  # Extracted example; can be adjusted to detect specific joins
         
-        # End statement handling
+        # Detect END statement to finalize
         elif "END" in line_upper:
-            # Finalize the SQL query
-            sql_lines.insert(0, f"SELECT {', '.join(select_columns)}")
-            sql_lines.insert(1, f"FROM {table_name}")
-            if group_by_column:
-                sql_lines.append(f"GROUP BY {group_by_column};")
             break
 
-        else:
-            sql_lines.append(f"-- Unhandled line: {line}")
+    # Construct the SQL query
+    sql_query = "SELECT " + ", ".join(select_columns)
+    sql_query += f"\nFROM {table_name}"
+    if where_conditions:
+        sql_query += "\nWHERE " + " and ".join(where_conditions)
+    if join_conditions:
+        sql_query += f"\nJOIN ON TABLE PCHOLD {join_conditions};"
 
-    return "\n".join(sql_lines)
+    return sql_query
 
 # Streamlit app setup
-st.title("WebFOCUS to SQL Server Translator with Joins and IIF Handling")
+st.title("WebFOCUS to SQL Server Translator with Enhanced WHERE and JOIN Handling")
 st.markdown("Paste your WebFOCUS code below to translate it into SQL Server language.")
 
 # Text input area for WebFOCUS code
