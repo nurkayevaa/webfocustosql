@@ -1,2 +1,2 @@
-streamlit>=1.0.0
-re>=2.2.1
+streamlit
+re
