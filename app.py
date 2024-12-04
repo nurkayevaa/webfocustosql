@@ -1,105 +1,73 @@
 import streamlit as st
-import re
+from langchain.prompts import PromptTemplate
+from langchain.llms import OpenAI
+from langchain.chains import LLMChain
+import openai
 
-# Function to clean WebFOCUS code
-def clean_webfocus_code(webfocus_code):
-    """
-    Cleans WebFOCUS code by:
-    - Removing comments and blank lines.
-    """
-    # Remove WebFOCUS comments (lines starting with -*)
-    code_without_comments = re.sub(r"^\s*(-\*.*)$", "", webfocus_code, flags=re.MULTILINE)
-    
-    # Remove blank lines
-    cleaned_code = "\n".join([line for line in code_without_comments.splitlines() if line.strip()])
-    return cleaned_code
+# Set OpenAI API key
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Function to translate WebFOCUS to SQL
-def translate_webfocus_to_sql(webfocus_code):
-    """
-    Translates WebFOCUS code into SQL Server syntax.
-    """
-    select_columns = []
-    table_name = None
-    where_conditions = []
-    join_condition = None
-    group_by_column = None
+# Prompt template for translation
+webfocus_to_sql_prompt = """
+You are an expert in translating WebFOCUS code into SQL Server queries. 
+Follow these guidelines:
+1. Handle WHERE, IF, PRINT, and BY keywords from WebFOCUS.
+2. Translate 'MISSING' to 'IS NULL'.
+3. Translate operators: GT -> >, LT -> <, NE -> <>, EQ -> =.
+4. Include JOIN logic where necessary.
 
-    for line in webfocus_code.splitlines():
-        line_upper = line.upper()
-        
-        # Detect table declaration
-        if "TABLE FILE" in line_upper:
-            table_name = line.split()[-1]
-        
-        # Detect WHERE or IF conditions
-        elif line_upper.startswith("WHERE") or line_upper.startswith("IF"):
-            condition = line.replace("WHERE", "").replace("IF", "").strip()
-            # Replace WebFOCUS operators with SQL operators
-            condition = (
-                condition.replace("IS MISSING", "IS NULL")
-                         .replace("GT", ">")
-                         .replace("LT", "<")
-                         .replace("EQ", "=")
-                         .replace("NE", "<>")
-            )
-            where_conditions.append(condition)
-        
-        # Detect PRINT for SELECT columns
-        elif line_upper.startswith("PRINT"):
-            columns = line.replace("PRINT", "").strip()
-            select_columns.extend(columns.split())
-        
-        # Detect BY for GROUP BY clause
-        elif line_upper.startswith("BY"):
-            group_by_column = line.split()[-1]
-            select_columns.append(group_by_column)  # Ensure it's in SELECT
-        
-        # Detect ON TABLE for additional clauses (like JOIN)
-        elif line_upper.startswith("ON TABLE"):
-            if "PCHOLD" in line_upper:
-                join_condition = "JRNL_ACTG.DATEOFREC = PCHOLD.DATEOFREC"  # Example condition
-        
-        # Detect END statement to finalize
-        elif "END" in line_upper:
-            break
+Translate the following WebFOCUS code into SQL:
+{webfocus_code}
+"""
 
-    # Construct the SQL query
-    sql_query = f"SELECT {', '.join(select_columns)}"
-    sql_query += f"\nFROM {table_name}"
-    if where_conditions:
-        sql_query += "\nWHERE " + " AND ".join(where_conditions)
-    if join_condition:
-        sql_query += f"\nJOIN PCHOLD\n  ON {join_condition};"
+prompt_template = PromptTemplate(
+    input_variables=["webfocus_code"], 
+    template=webfocus_to_sql_prompt
+)
 
-    return sql_query
+# Initialize the OpenAI LLM through LangChain
+llm = OpenAI(temperature=0.2, model="gpt-4")  # You can also use "gpt-3.5-turbo"
+chain = LLMChain(llm=llm, prompt=prompt_template)
 
-# Streamlit app setup
-st.title("WebFOCUS to SQL Server Translator")
-st.markdown("Paste your WebFOCUS code below to translate it into SQL Server language.")
+# Streamlit UI
+st.title("WebFOCUS to SQL Translator with Prompt Engineering")
+st.markdown("""
+This app translates WebFOCUS code into SQL Server syntax using OpenAI's GPT models. 
+You can customize the prompt to experiment with different translation outputs.
+""")
 
-# Text input area for WebFOCUS code
-webfocus_code = st.text_area("Enter WebFOCUS Code:", height=300, placeholder="Paste your WebFOCUS code here...")
+# Input area for WebFOCUS code
+webfocus_code = st.text_area(
+    "Enter WebFOCUS Code:",
+    height=300,
+    placeholder="Paste your WebFOCUS code here..."
+)
 
 # Button to trigger translation
-if st.button("Translate to SQL Server"):
+if st.button("Translate to SQL"):
     if webfocus_code.strip():
-        with st.spinner("Translating WebFOCUS to SQL Server..."):
+        with st.spinner("Translating WebFOCUS to SQL..."):
             try:
-                # Clean the WebFOCUS code
-                cleaned_code = clean_webfocus_code(webfocus_code)
+                # Use LangChain chain to translate the WebFOCUS code
+                sql_translation = chain.run({"webfocus_code": webfocus_code})
                 
-                # Translate WebFOCUS to SQL
-                sql_translation = translate_webfocus_to_sql(cleaned_code)
-
                 # Display result
                 st.success("Translation Complete!")
                 st.text_area("SQL Translation:", sql_translation, height=300)
             except Exception as e:
-                st.error(f"An error occurred during translation: {str(e)}")
+                st.error(f"An error occurred: {str(e)}")
     else:
         st.warning("Please enter WebFOCUS code before translating!")
 
-# Footer
+# Prompt customization area
+st.markdown("### Customize Prompt")
+st.text_area(
+    "Prompt Template",
+    value=webfocus_to_sql_prompt,
+    height=200,
+    help="Modify the prompt template to see how the translation changes."
+)
+
 st.markdown("---")
-st.markdown("Powered by Streamlit")
+st.markdown("Powered by OpenAI and LangChain")
+
