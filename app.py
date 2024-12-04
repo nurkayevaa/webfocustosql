@@ -1,73 +1,53 @@
 import streamlit as st
-from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
-from langchain.chains import LLMChain
 import openai
 
-# Set OpenAI API key
+# Configure OpenAI API
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Prompt template for translation
-webfocus_to_sql_prompt = """
-You are an expert in translating WebFOCUS code into SQL Server queries. 
-Follow these guidelines:
-1. Handle WHERE, IF, PRINT, and BY keywords from WebFOCUS.
-2. Translate 'MISSING' to 'IS NULL'.
-3. Translate operators: GT -> >, LT -> <, NE -> <>, EQ -> =.
-4. Include JOIN logic where necessary.
+# Streamlit App Title
+st.title("WebFOCUS to SQL Translator using ChatGPT-4 Turbo")
 
-Translate the following WebFOCUS code into SQL:
-{webfocus_code}
-"""
+# Text Area for WebFOCUS Input
+webfocus_code = st.text_area("Enter WebFOCUS Code:", height=300, placeholder="Paste your WebFOCUS code here...")
 
-prompt_template = PromptTemplate(
-    input_variables=["webfocus_code"], 
-    template=webfocus_to_sql_prompt
-)
-
-# Initialize the OpenAI LLM through LangChain
-llm = OpenAI(temperature=0.2, model="gpt-4")  # You can also use "gpt-3.5-turbo"
-chain = LLMChain(llm=llm, prompt=prompt_template)
-
-# Streamlit UI
-st.title("WebFOCUS to SQL Translator with Prompt Engineering")
-st.markdown("""
-This app translates WebFOCUS code into SQL Server syntax using OpenAI's GPT models. 
-You can customize the prompt to experiment with different translation outputs.
-""")
-
-# Input area for WebFOCUS code
-webfocus_code = st.text_area(
-    "Enter WebFOCUS Code:",
-    height=300,
-    placeholder="Paste your WebFOCUS code here..."
-)
-
-# Button to trigger translation
+# Button to Trigger Translation
 if st.button("Translate to SQL"):
-    if webfocus_code.strip():
-        with st.spinner("Translating WebFOCUS to SQL..."):
-            try:
-                # Use LangChain chain to translate the WebFOCUS code
-                sql_translation = chain.run({"webfocus_code": webfocus_code})
-                
-                # Display result
-                st.success("Translation Complete!")
-                st.text_area("SQL Translation:", sql_translation, height=300)
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
+    if not webfocus_code.strip():
+        st.error("Please provide WebFOCUS code to translate.")
     else:
-        st.warning("Please enter WebFOCUS code before translating!")
+        # Prompt Engineering for Translation
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert in database query languages specializing in SQL Server. Your task is to "
+                    "translate WebFOCUS code into optimized SQL Server syntax. Handle WHERE clauses, JOINs, "
+                    "aggregations, and ensure clean, well-formatted output. Avoid unnecessary complexity."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Translate the following WebFOCUS code into SQL Server syntax:\n\n{webfocus_code}"
+            }
+        ]
 
-# Prompt customization area
-st.markdown("### Customize Prompt")
-st.text_area(
-    "Prompt Template",
-    value=webfocus_to_sql_prompt,
-    height=200,
-    help="Modify the prompt template to see how the translation changes."
-)
+        try:
+            # OpenAI API Call
+            response = openai.ChatCompletion.create(
+                model="gpt-4-turbo",
+                messages=messages,
+                max_tokens=3000,  # Increase token limit for detailed responses
+                temperature=0  # Deterministic output for precise translation
+            )
+            sql_translation = response["choices"][0]["message"]["content"].strip()
 
+            # Display Result
+            st.success("Translation Complete!")
+            st.text_area("SQL Translation:", sql_translation, height=300)
+
+        except Exception as e:
+            st.error(f"An error occurred during translation: {e}")
+
+# Footer
 st.markdown("---")
-st.markdown("Powered by OpenAI and LangChain")
-
+st.markdown("Powered by Streamlit and OpenAI ChatGPT-4 Turbo")
